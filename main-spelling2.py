@@ -4,52 +4,43 @@ import streamlit as st
 # LOAD KAMUS
 # ======================
 with open("kbbi_dataset.txt", "r", encoding="utf-8") as f:
-    kamus_txt = set([line.strip() for line in f])
+    kamus_txt = set(line.strip().lower() for line in f)
 
 
 # ======================
-# DLD
+# DLD FUNCTION
 # ======================
 def damerau_levenshtein_distance(s1, s2):
     d = {}
-    lenstr1 = len(s1)
-    lenstr2 = len(s2)
 
-    for i in range(-1, lenstr1 + 1):
-        d[(i, -1)] = i + 1
-    for j in range(-1, lenstr2 + 1):
-        d[(-1, j)] = j + 1
+    for i in range(-1, len(s1)+1):
+        d[(i, -1)] = i+1
+    for j in range(-1, len(s2)+1):
+        d[(-1, j)] = j+1
 
-    for i in range(lenstr1):
-        for j in range(lenstr2):
+    for i in range(len(s1)):
+        for j in range(len(s2)):
             cost = 0 if s1[i] == s2[j] else 1
             d[(i, j)] = min(
-                d[(i - 1, j)] + 1,
-                d[(i, j - 1)] + 1,
-                d[(i - 1, j - 1)] + cost,
+                d[(i-1, j)] + 1,
+                d[(i, j-1)] + 1,
+                d[(i-1, j-1)] + cost
             )
-            if i and j and s1[i] == s2[j - 1] and s1[i - 1] == s2[j]:
-                d[(i, j)] = min(d[(i, j)], d[i - 2, j - 2] + cost)
+            if i and j and s1[i] == s2[j-1] and s1[i-1] == s2[j]:
+                d[(i, j)] = min(d[(i, j)], d[(i-2, j-2)] + cost)
 
-    return d[lenstr1 - 1, lenstr2 - 1]
-
-
-# ======================
-# FILTER KAMUS
-# ======================
-def filtering_kamus(kata):
-    return [k for k in kamus_txt if abs(len(k) - len(kata)) <= 2]
+    return d[(len(s1)-1, len(s2)-1)]
 
 
 # ======================
-# PERBAIKI DENGAN DLD
+# DLD + TOP 3
 # ======================
 def perbaiki_dld(kata):
 
     if kata in kamus_txt:
-        return kata, "BENAR"
+        return kata, 0, []
 
-    kandidat = filtering_kamus(kata)
+    kandidat = [k for k in kamus_txt if abs(len(k) - len(kata)) <= 2]
 
     ranking = []
     for k in kandidat:
@@ -58,69 +49,67 @@ def perbaiki_dld(kata):
 
     ranking.sort(key=lambda x: x[1])
 
-    if ranking and ranking[0][1] <= 2:
-        return ranking[0][0], "DLD"
+    if ranking:
+        top3 = ranking[:3]
+        kandidat_terbaik, jarak = ranking[0]
+        return kandidat_terbaik, jarak, top3
 
-    return kata, "TIDAK"
+    return kata, 999, []
 
 
 # ======================
-# EMPIRIS (SPLIT)
+# EMPIRIS
 # ======================
 def metode_empiris(kata):
 
-    for i in range(3, len(kata)-2):
+    for i in range(2, len(kata)-1):
 
         kiri = kata[:i]
         kanan = kata[i:]
 
         if kiri in kamus_txt and kanan in kamus_txt:
-            return [kiri, kanan]
+            return kiri, kanan
 
     return None
 
 
 # ======================
-# PREDIKSI FINAL
+# MODEL SKENARIO 2
 # ======================
-def prediksi_skenario2(kata):
+def model_skenario2(kata):
 
     kata = kata.lower().strip(",.!?")
 
-    # 1. kalau benar
+    # 1. BENAR
     if kata in kamus_txt:
-        return kata, "BENAR"
+        return kata, "BENAR", []
 
-    # 2. coba DLD dulu
-    hasil_dld, metode = perbaiki_dld(kata)
+    # 2. DLD
+    hasil_dld, jarak, top3 = perbaiki_dld(kata)
 
-    if metode == "DLD":
-        return hasil_dld, "DLD"
+    if jarak <= 2:
+        return hasil_dld, "DLD", top3
 
-    # 3. kalau gagal → EMPIRIS
+    # 3. EMPIRIS
     split = metode_empiris(kata)
 
     if split:
-        hasil = []
+        kiri, kanan = split
 
-        for k in split:
-            if k in kamus_txt:
-                hasil.append(k)
-            else:
-                hasil.append(perbaiki_dld(k)[0])
+        kiri_fix, _, _ = perbaiki_dld(kiri)
+        kanan_fix, _, _ = perbaiki_dld(kanan)
 
-        return " ".join(hasil), "EMPIRIS"
+        return kiri_fix + " " + kanan_fix, "EMPIRIS", []
 
-    return kata, "TIDAK DIKOREKSI"
+    # 4. GAGAL
+    return kata, "TIDAK DIKOREKSI", top3
 
 
 # ======================
 # UI
 # ======================
-st.set_page_config(page_title="Skenario 2 - DLD + Empiris")
-
 st.title("🧠 Spelling Correction - Skenario 2")
-st.write("Metode: DLD + Empiris (Split Kata)")
+st.write("Metode: DLD + Empiris + Top 3 Kandidat")
 
 teks = st.text_area("Masukkan kalimat:")
 
@@ -131,17 +120,31 @@ if st.button("Koreksi"):
 
     for kata in teks.split():
 
-        hasil, metode = prediksi_skenario2(kata)
+        hasil, metode, top3 = model_skenario2(kata)
 
         hasil_kalimat.append(hasil)
 
-        if hasil != kata:
-            detail.append((kata, hasil, metode))
+        if metode != "BENAR":
+            detail.append((kata, hasil, metode, top3))
 
-    st.subheader("✅ Hasil Perbaikan:")
+    st.subheader("Hasil:")
     st.success(" ".join(hasil_kalimat))
 
-    if detail:
-        st.subheader("🔍 Detail:")
-        for d in detail:
-            st.write(f"❌ {d[0]} → ✅ {d[1]} ({d[2]})")
+    st.subheader("Detail:")
+
+    for kata, hasil, metode, top3 in detail:
+
+        if metode == "TIDAK DIKOREKSI":
+            st.write(f"⚠️ {kata} → tidak bisa dikoreksi")
+
+        elif metode == "EMPIRIS":
+            st.write(f"🔧 {kata} → {hasil} (EMPIRIS)")
+
+        else:
+            st.write(f"❌ {kata} → {hasil} ({metode})")
+
+        # 🔥 tampilkan TOP 3 dari DLD
+        if top3:
+            st.write("   🔎 Top Kandidat:")
+            for i, (k, j) in enumerate(top3, start=1):
+                st.write(f"   {i}. {k} (jarak={j})")
