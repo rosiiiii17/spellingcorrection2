@@ -94,16 +94,19 @@ def filtering_kamus(kata):
     return hasil
 
 # ======================
-# EMPIRIS (TAMBAHAN)
+# EMPIRIS (FIX)
 # ======================
 def metode_empiris(kata):
+
+    suffix_valid = ["nya", "lah", "kah", "pun", "ku", "mu"]
 
     for i in range(2, len(kata)-1):
         kiri = kata[:i]
         kanan = kata[i:]
 
-        if kiri in kamus_txt and kanan in kamus_txt:
-            return kiri, kanan
+        if kiri in kamus_txt:
+            if kanan in kamus_txt or kanan in suffix_valid:
+                return kiri, kanan
 
     return None
 
@@ -149,7 +152,7 @@ def proses_kata(kata):
         if skor <= 2.5:
             return kandidat_terbaik, "DLD", top3
 
-    # 3. EMPIRIS (HANYA JIKA DLD GAGAL)
+    # 3. EMPIRIS
     split = metode_empiris(kata)
 
     if split:
@@ -167,7 +170,7 @@ def proses_kata(kata):
 # UI STREAMLIT
 # ======================
 st.title("Spelling Correction - Skenario 2")
-st.write("Metode: DAMERAU LEVENSTHEIN DISTANCE + EMPIRIS")
+st.write("Metode: DLD + Empiris")
 
 teks = st.text_area("Masukkan kalimat:")
 
