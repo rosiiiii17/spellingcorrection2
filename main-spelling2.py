@@ -4,7 +4,7 @@ import json
 import gzip
 
 # ======================
-# LOAD TXT (FILTERING)
+# LOAD DATA
 # ======================
 with open("kbbi_dataset.txt", "r", encoding="utf-8") as f:
     kamus_txt = set([
@@ -13,20 +13,13 @@ with open("kbbi_dataset.txt", "r", encoding="utf-8") as f:
         if " " not in line.strip()
     ])
 
-# ======================
-# LOAD JSON GZIP
-# ======================
 @st.cache_data
 def load_kamus_json():
     with gzip.open("kbbi.json.gz", "rt", encoding="utf-8") as f:
         data = json.load(f)
     return set([item["kata"] for item in data if "kata" in item])
 
-try:
-    kamus_json = load_kamus_json()
-except:
-    st.error("Gagal load kamus JSON")
-    st.stop()
+kamus_json = load_kamus_json()
 
 # ======================
 # NORMALISASI
@@ -35,22 +28,11 @@ def normalize_word(word):
     return re.sub(r'(.)\1+', r'\1', word)
 
 # ======================
-# CEK KAMUS
-# ======================
-def cek_kamus_lengkap(kata):
-    if kata in kamus_json:
-        return "BENAR"
-    if not re.match(r'^[a-z]+$', kata):
-        return "UNKNOWN"
-    if len(kata) <= 2:
-        return "UNKNOWN"
-    return "SALAH"
-
-# ======================
 # DLD
 # ======================
 def damerau_levenshtein_distance(s1, s2):
     d = {}
+
     for i in range(-1, len(s1)+1):
         d[(i, -1)] = i+1
     for j in range(-1, len(s2)+1):
@@ -59,11 +41,13 @@ def damerau_levenshtein_distance(s1, s2):
     for i in range(len(s1)):
         for j in range(len(s2)):
             cost = 0 if s1[i] == s2[j] else 1
+
             d[(i, j)] = min(
                 d[(i-1, j)] + 1,
                 d[(i, j-1)] + 1,
                 d[(i-1, j-1)] + cost
             )
+
             if i and j and s1[i] == s2[j-1] and s1[i-1] == s2[j]:
                 d[(i, j)] = min(d[(i, j)], d[(i-2, j-2)] + cost)
 
@@ -94,96 +78,108 @@ def filtering_kamus(kata):
     return hasil
 
 # ======================
-# EMPIRIS
+# TOP 3 DLD (SAMA SPT SKENARIO 1)
+# ======================
+def prediksi_top3_dld(kata):
+
+    kandidat = filtering_kamus(kata)
+
+    ranking = []
+
+    for k in kandidat:
+        jarak = damerau_levenshtein_distance(kata, k)
+        ranking.append((k, jarak))
+
+    ranking.sort(key=lambda x: x[1])
+
+    return [x[0] for x in ranking[:3]]
+
+# ======================
+# PERBAIKI 1 KATA (DLD)
+# ======================
+def perbaiki_kata_dld(kata):
+
+    kandidat = filtering_kamus(kata)
+
+    ranking = []
+
+    for k in kandidat:
+        jarak = damerau_levenshtein_distance(kata, k)
+        ranking.append((k, jarak))
+
+    ranking.sort(key=lambda x: x[1])
+
+    if ranking and ranking[0][1] <= 2:
+        return ranking[0][0]
+
+    return kata
+
+# ======================
+# EMPIRIS (SPLIT)
 # ======================
 def metode_empiris(kata):
 
-    suffix_valid = ["nya", "lah", "kah", "pun", "ku", "mu"]
+    hasil = []
 
-    for i in range(3, len(kata)-2):
-
+    for i in range(1, len(kata)):
         kiri = kata[:i]
         kanan = kata[i:]
 
-        if len(kiri) < 3 or len(kanan) < 3:
-            continue
+        if kiri in kamus_txt and kanan in kamus_txt:
+            hasil.append((kiri, kanan))
 
-        if kiri in kamus_txt:
-            if kanan in kamus_txt or kanan in suffix_valid:
-                return kiri, kanan
-
-    return None
+    return hasil
 
 # ======================
-# MODEL UTAMA (FIX FINAL)
+# MODEL FINAL
 # ======================
-def proses_kata(kata):
+def prediksi_final(kata):
 
-    kata = kata.lower().strip(",.!?")
-    kata = normalize_word(kata)
-
-    status = cek_kamus_lengkap(kata)
-
-    # 1. BENAR
-    if status == "BENAR":
-        return kata, "BENAR", []
+    kata = kata.lower()
 
     # ======================
-    # 2. DLD (TAHAP 1)
+    # DLD
     # ======================
     kandidat = filtering_kamus(kata)
 
     ranking = []
+
     for k in kandidat:
         jarak = damerau_levenshtein_distance(kata, k)
-
-        skor = jarak
-        skor += abs(len(kata) - len(k)) * 0.5
-
-        if kata[:2] == k[:2]:
-            skor -= 0.5
-
-        if kata in k or k in kata:
-            skor -= 0.5
-
-        ranking.append((k, skor))
+        ranking.append((k, jarak))
 
     ranking.sort(key=lambda x: x[1])
 
-    if ranking:
-        top3 = ranking[:3]
-        kandidat_terbaik, skor = ranking[0]
+    top3 = [x[0] for x in ranking[:3]] if ranking else []
 
-        # 🔥 threshold penting
-        if skor <= 2.5:
-            return kandidat_terbaik, "DLD", top3
+    # ✅ jika DLD berhasil
+    if ranking and ranking[0][1] <= 2:
+        return ranking[0][0], "DLD", top3
 
     # ======================
-    # 3. EMPIRIS → DLD LAGI
+    # EMPIRIS
     # ======================
-    split = metode_empiris(kata)
+    hasil_empiris = metode_empiris(kata)
 
-    if split:
-        kiri, kanan = split
+    if hasil_empiris:
 
-        kiri_fix, _, _ = proses_kata(kiri)
-        kanan_fix, _, _ = proses_kata(kanan)
+        kiri, kanan = hasil_empiris[0]
 
-        return kiri_fix + " " + kanan_fix, "EMPIRIS", []
+        kiri_fix = perbaiki_kata_dld(kiri)
+        kanan_fix = perbaiki_kata_dld(kanan)
+
+        return f"{kiri_fix} {kanan_fix}", "EMPIRIS", []
 
     # ======================
-    # 4. GAGAL
+    # FALLBACK
     # ======================
-    if ranking:
-        return kata, "TIDAK DIKOREKSI", ranking[:3]
-
-    return kata, "TIDAK DIKOREKSI", []
+    return kata, "TIDAK DIKOREKSI", top3
 
 # ======================
-# UI STREAMLIT (FINAL)
+# UI
 # ======================
 st.title("Spelling Correction - Skenario 2")
-st.write("Metode: DLD + Empiris (Improved)")
+st.write("Metode: DLD + Empiris")
 
 teks = st.text_area("Masukkan kalimat:")
 
@@ -194,39 +190,33 @@ if st.button("Koreksi"):
 
     for kata in teks.split():
 
-        hasil, metode, top3 = proses_kata(kata)
+        hasil, metode, top3 = prediksi_final(kata)
 
-        # ✅ HASIL BERSIH
         hasil_kalimat.append(hasil)
 
-        # simpan detail
-        if metode != "BENAR":
+        if metode != "DLD":
             detail.append((kata, hasil, metode, top3))
 
     # ======================
-    # HASIL
+    # HASIL (BERSIH)
     # ======================
     st.subheader("Hasil:")
     st.success(" ".join(hasil_kalimat))
 
     # ======================
-    # DETAIL
+    # PERBAIKAN
     # ======================
-    if detail:
-        st.subheader("Perbaikan Kata:")
+    st.subheader("Perbaikan Kata:")
 
-        for kata, hasil, metode, top3 in detail:
+    for kata, hasil, metode, top3 in detail:
 
-            if metode == "TIDAK DIKOREKSI":
-                st.warning(f"{kata} → tidak bisa dikoreksi")
+        if metode == "EMPIRIS":
+            st.info(f"{kata} → {hasil} (EMPIRIS)")
 
-            elif metode == "EMPIRIS":
-                st.info(f"{kata} → {hasil} (EMPIRIS)")
+        elif metode == "TIDAK DIKOREKSI":
+            st.warning(f"{kata} → tidak bisa dikoreksi")
 
-            else:
-                st.error(f"{kata} → {hasil} (DLD)")
-
-            if metode == "DLD" and top3:
+            if top3:
                 st.write("Top Kandidat:")
-                for i, (k, j) in enumerate(top3, 1):
-                    st.write(f"{i}. {k} (skor={round(j,2)})")
+                for i, k in enumerate(top3, 1):
+                    st.write(f"{i}. {k}")
