@@ -115,21 +115,29 @@ def perbaiki_kata_dld(kata):
     return kata
 
 # ======================
-# EMPIRIS (SPLIT LEBIH LONGGAR)
+# EMPIRIS (SMART SPLIT)
 # ======================
 def metode_empiris(kata):
 
-    hasil = []
+    kandidat_split = []
 
     for i in range(1, len(kata)):
         kiri = kata[:i]
         kanan = kata[i:]
 
-        # 🔥 tidak perlu harus ada di kamus
-        if len(kiri) > 2 and len(kanan) > 2:
-            hasil.append((kiri, kanan))
+        kiri_fix = perbaiki_kata_dld(kiri)
+        kanan_fix = perbaiki_kata_dld(kanan)
 
-    return hasil
+        skor = (
+            damerau_levenshtein_distance(kiri, kiri_fix) +
+            damerau_levenshtein_distance(kanan, kanan_fix)
+        )
+
+        kandidat_split.append((kiri, kanan, skor))
+
+    kandidat_split.sort(key=lambda x: x[2])
+
+    return kandidat_split[0] if kandidat_split else None
 
 # ======================
 # MODEL FINAL
@@ -153,33 +161,32 @@ def prediksi_final(kata):
 
     top3_awal = [x[0] for x in ranking[:3]] if ranking else []
 
-    # ✅ jika berhasil langsung
     if ranking and ranking[0][1] <= 2:
         return ranking[0][0], "DLD", top3_awal
 
     # ======================
-    # 2. EMPIRIS (SPLIT)
+    # 2. EMPIRIS
     # ======================
-    hasil_empiris = metode_empiris(kata)
+    split = metode_empiris(kata)
 
-    if hasil_empiris:
+    if split:
 
-        kiri, kanan = hasil_empiris[0]
+        kiri, kanan, _ = split
 
-        # 🔥 perbaiki tiap kata pakai DLD
         kiri_fix = perbaiki_kata_dld(kiri)
         kanan_fix = perbaiki_kata_dld(kanan)
 
-        # 🔥 ambil top3 dari kata yang salah
-        top3_split = []
+        hasil = f"{kiri_fix} {kanan_fix}"
 
+        # ambil top3 dari kata yang salah
         if kiri_fix != kiri:
-            top3_split = prediksi_top3_dld(kiri)
-
+            top3 = prediksi_top3_dld(kiri)
         elif kanan_fix != kanan:
-            top3_split = prediksi_top3_dld(kanan)
+            top3 = prediksi_top3_dld(kanan)
+        else:
+            top3 = []
 
-        return f"{kiri_fix} {kanan_fix}", "EMPIRIS", top3_split
+        return hasil, "EMPIRIS", top3
 
     # ======================
     # 3. GAGAL TOTAL
@@ -209,7 +216,7 @@ if st.button("Koreksi"):
             detail.append((kata, hasil, metode, top3))
 
     # ======================
-    # HASIL (BERSIH)
+    # HASIL
     # ======================
     st.subheader("Hasil:")
     st.success(" ".join(hasil_kalimat))
@@ -224,15 +231,11 @@ if st.button("Koreksi"):
         if metode == "EMPIRIS":
             st.info(f"{kata} → {hasil} (EMPIRIS)")
 
-            if top3:
-                st.write("Top Kandidat:")
-                for i, k in enumerate(top3, 1):
-                    st.write(f"{i}. {k}")
-
         elif metode == "TIDAK DIKOREKSI":
             st.warning(f"{kata} → tidak bisa dikoreksi")
 
-            if top3:
-                st.write("Top Kandidat:")
-                for i, k in enumerate(top3, 1):
-                    st.write(f"{i}. {k}")
+        # 🔥 TOP 3 SELALU DITAMPILKAN JIKA ADA
+        if top3:
+            st.write("Top Kandidat:")
+            for i, k in enumerate(top3, 1):
+                st.write(f"{i}. {k}")
