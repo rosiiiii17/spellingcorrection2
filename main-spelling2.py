@@ -191,16 +191,15 @@ if st.button("Koreksi"):
 
         hasil, metode, top3 = proses_kata(kata)
 
-        if metode in ["DLD", "EMPIRIS"] and kata.lower() != hasil:
-            hasil_kalimat.append(f"[{kata} → {hasil}]")
-        else:
-            hasil_kalimat.append(hasil)
+        hasil_kalimat.append(hasil)
 
         if metode != "BENAR":
             detail.append((kata, hasil, metode, top3))
 
     st.subheader("Hasil:")
     st.success(" ".join(hasil_kalimat))
+
+    st.subheader("Detail:")
 
     for kata, hasil, metode, top3 in detail:
 
