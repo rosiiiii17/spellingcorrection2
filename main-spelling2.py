@@ -94,15 +94,20 @@ def filtering_kamus(kata):
     return hasil
 
 # ======================
-# EMPIRIS (SPLIT KATA)
+# EMPIRIS (SUDAH DIPERKETAT)
 # ======================
 def metode_empiris(kata):
 
     suffix_valid = ["nya", "lah", "kah", "pun", "ku", "mu"]
 
-    for i in range(2, len(kata)-1):
+    for i in range(3, len(kata)-2):
+
         kiri = kata[:i]
         kanan = kata[i:]
+
+        # filter panjang minimal
+        if len(kiri) < 3 or len(kanan) < 3:
+            continue
 
         if kiri in kamus_txt:
             if kanan in kamus_txt or kanan in suffix_valid:
@@ -111,7 +116,7 @@ def metode_empiris(kata):
     return None
 
 # ======================
-# MODEL SKENARIO 2 (FIX)
+# MODEL SKENARIO 2 (FIX TOTAL)
 # ======================
 def proses_kata(kata):
 
@@ -125,17 +130,9 @@ def proses_kata(kata):
     if status == "BENAR":
         return kata, "BENAR", []
 
-    # 2. EMPIRIS (PRIORITAS)
-    split = metode_empiris(kata)
-    if split:
-        kiri, kanan = split
-
-        kiri_fix, _, _ = proses_kata(kiri)
-        kanan_fix, _, _ = proses_kata(kanan)
-
-        return kiri_fix + " " + kanan_fix, "EMPIRIS", []
-
-    # 3. DLD (TANPA THRESHOLD)
+    # ======================
+    # 2. DLD (PRIORITAS)
+    # ======================
     kandidat = filtering_kamus(kata)
 
     ranking = []
@@ -160,14 +157,28 @@ def proses_kata(kata):
         kandidat_terbaik, skor = ranking[0]
         return kandidat_terbaik, "DLD", top3
 
+    # ======================
+    # 3. EMPIRIS
+    # ======================
+    split = metode_empiris(kata)
+    if split:
+        kiri, kanan = split
+
+        kiri_fix, _, _ = proses_kata(kiri)
+        kanan_fix, _, _ = proses_kata(kanan)
+
+        return kiri_fix + " " + kanan_fix, "EMPIRIS", []
+
+    # ======================
     # 4. GAGAL
+    # ======================
     return kata, "TIDAK DIKOREKSI", []
 
 # ======================
 # UI STREAMLIT
 # ======================
-st.title("Spelling Correction - Skenario 2")
-st.write("Metode: DLD + Empiris")
+st.title("Spelling Correction - Skenario 2 (Fixed)")
+st.write("Metode: DLD + Empiris (Improved)")
 
 teks = st.text_area("Masukkan kalimat:")
 
