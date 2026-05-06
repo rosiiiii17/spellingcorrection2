@@ -94,7 +94,7 @@ def filtering_kamus(kata):
     return hasil
 
 # ======================
-# EMPIRIS (FIX)
+# EMPIRIS (SPLIT KATA)
 # ======================
 def metode_empiris(kata):
 
@@ -111,7 +111,7 @@ def metode_empiris(kata):
     return None
 
 # ======================
-# MODEL SKENARIO 2
+# MODEL SKENARIO 2 (FIX)
 # ======================
 def proses_kata(kata):
 
@@ -125,7 +125,17 @@ def proses_kata(kata):
     if status == "BENAR":
         return kata, "BENAR", []
 
-    # 2. DLD
+    # 2. EMPIRIS (PRIORITAS)
+    split = metode_empiris(kata)
+    if split:
+        kiri, kanan = split
+
+        kiri_fix, _, _ = proses_kata(kiri)
+        kanan_fix, _, _ = proses_kata(kanan)
+
+        return kiri_fix + " " + kanan_fix, "EMPIRIS", []
+
+    # 3. DLD (TANPA THRESHOLD)
     kandidat = filtering_kamus(kata)
 
     ranking = []
@@ -148,23 +158,10 @@ def proses_kata(kata):
     if ranking:
         top3 = ranking[:3]
         kandidat_terbaik, skor = ranking[0]
-
-        if skor <= 2.5:
-            return kandidat_terbaik, "DLD", top3
-
-    # 3. EMPIRIS
-    split = metode_empiris(kata)
-
-    if split:
-        kiri, kanan = split
-
-        kiri_fix, _, _ = proses_kata(kiri)
-        kanan_fix, _, _ = proses_kata(kanan)
-
-        return kiri_fix + " " + kanan_fix, "EMPIRIS", []
+        return kandidat_terbaik, "DLD", top3
 
     # 4. GAGAL
-    return kata, "TIDAK DIKOREKSI", ranking[:3] if ranking else []
+    return kata, "TIDAK DIKOREKSI", []
 
 # ======================
 # UI STREAMLIT
@@ -183,7 +180,6 @@ if st.button("Koreksi"):
 
         hasil, metode, top3 = proses_kata(kata)
 
-        # penanda koreksi
         if metode in ["DLD", "EMPIRIS"] and kata.lower() != hasil:
             hasil_kalimat.append(f"[{kata} → {hasil}]")
         else:
