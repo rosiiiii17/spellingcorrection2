@@ -14,7 +14,7 @@ with open("kbbi_dataset.txt", "r", encoding="utf-8") as f:
     ])
 
 # ======================
-# LOAD JSON GZIP (PENGECEKAN)
+# LOAD JSON GZIP (VALIDASI)
 # ======================
 @st.cache_data
 def load_kamus_json():
@@ -22,11 +22,7 @@ def load_kamus_json():
         data = json.load(f)
     return set([item["kata"] for item in data if "kata" in item])
 
-try:
-    kamus_json = load_kamus_json()
-except:
-    st.error("Gagal load kamus JSON")
-    st.stop()
+kamus_json = load_kamus_json()
 
 # ======================
 # NORMALISASI
@@ -35,7 +31,7 @@ def normalize_word(word):
     return re.sub(r'(.)\1+', r'\1', word)
 
 # ======================
-# CEK KAMUS (JSON)
+# CEK KAMUS
 # ======================
 def cek_kamus_lengkap(kata):
     if kata in kamus_json:
@@ -70,7 +66,7 @@ def damerau_levenshtein_distance(s1, s2):
     return d[len(s1)-1, len(s2)-1]
 
 # ======================
-# FILTERING (TXT)
+# FILTERING
 # ======================
 def filtering_kamus(kata):
 
@@ -94,7 +90,7 @@ def filtering_kamus(kata):
     return hasil
 
 # ======================
-# EMPIRIS (SUDAH DIPERKETAT)
+# EMPIRIS
 # ======================
 def metode_empiris(kata):
 
@@ -105,7 +101,6 @@ def metode_empiris(kata):
         kiri = kata[:i]
         kanan = kata[i:]
 
-        # filter panjang minimal
         if len(kiri) < 3 or len(kanan) < 3:
             continue
 
@@ -116,11 +111,10 @@ def metode_empiris(kata):
     return None
 
 # ======================
-# MODEL SKENARIO 2 (FIX TOTAL)
+# MODEL FINAL
 # ======================
 def proses_kata(kata):
 
-    kata_asli = kata
     kata = kata.lower().strip(",.!?")
     kata = normalize_word(kata)
 
@@ -131,7 +125,7 @@ def proses_kata(kata):
         return kata, "BENAR", []
 
     # ======================
-    # 2. DLD (PRIORITAS)
+    # 2. DLD
     # ======================
     kandidat = filtering_kamus(kata)
 
@@ -152,33 +146,43 @@ def proses_kata(kata):
 
     ranking.sort(key=lambda x: x[1])
 
-    if ranking:
-        top3 = ranking[:3]
-        kandidat_terbaik, skor = ranking[0]
-        return kandidat_terbaik, "DLD", top3
+    top3_awal = ranking[:3] if ranking else []
+
+    # hanya pakai DLD jika skor bagus
+    if ranking and ranking[0][1] <= 2.5:
+        return ranking[0][0], "DLD", top3_awal
 
     # ======================
     # 3. EMPIRIS
     # ======================
     split = metode_empiris(kata)
+
     if split:
         kiri, kanan = split
 
-        kiri_fix, _, _ = proses_kata(kiri)
-        kanan_fix, _, _ = proses_kata(kanan)
+        kiri_fix, _, top3_kiri = proses_kata(kiri)
+        kanan_fix, _, top3_kanan = proses_kata(kanan)
 
-        return kiri_fix + " " + kanan_fix, "EMPIRIS", []
+        hasil = kiri_fix + " " + kanan_fix
+
+        # ambil top3 dari bagian yang salah
+        if kiri != kiri_fix:
+            return hasil, "EMPIRIS", top3_kiri
+        elif kanan != kanan_fix:
+            return hasil, "EMPIRIS", top3_kanan
+        else:
+            return hasil, "EMPIRIS", []
 
     # ======================
     # 4. GAGAL
     # ======================
-    return kata, "TIDAK DIKOREKSI", []
+    return kata, "TIDAK DIKOREKSI", top3_awal
 
 # ======================
 # UI STREAMLIT
 # ======================
 st.title("Spelling Correction - Skenario 2")
-st.write("Metode: DLD + Empiris (Improved)")
+st.write("Metode: DLD + Empiris")
 
 teks = st.text_area("Masukkan kalimat:")
 
@@ -191,18 +195,22 @@ if st.button("Koreksi"):
 
         hasil, metode, top3 = proses_kata(kata)
 
-        if metode in ["DLD", "EMPIRIS"] and kata.lower() != hasil:
-            hasil_kalimat.append(f"[{kata} → {hasil}]")
-        else:
-            hasil_kalimat.append(hasil)
+        # hasil bersih
+        hasil_kalimat.append(hasil)
 
         if metode != "BENAR":
             detail.append((kata, hasil, metode, top3))
 
+    # ======================
+    # HASIL
+    # ======================
     st.subheader("Hasil:")
     st.success(" ".join(hasil_kalimat))
 
-    st.subheader("Detail:")
+    # ======================
+    # DETAIL
+    # ======================
+    st.subheader("Perbaikan Kata:")
 
     for kata, hasil, metode, top3 in detail:
 
@@ -213,7 +221,7 @@ if st.button("Koreksi"):
             st.info(f"{kata} → {hasil} (EMPIRIS)")
 
         else:
-            st.error(f"{kata} → {hasil} ({metode})")
+            st.error(f"{kata} → {hasil} (DLD)")
 
         if top3:
             st.write("Top Kandidat:")
