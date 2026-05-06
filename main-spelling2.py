@@ -78,7 +78,7 @@ def filtering_kamus(kata):
     return hasil
 
 # ======================
-# TOP 3 DLD (SAMA SPT SKENARIO 1)
+# TOP 3 DLD
 # ======================
 def prediksi_top3_dld(kata):
 
@@ -95,7 +95,7 @@ def prediksi_top3_dld(kata):
     return [x[0] for x in ranking[:3]]
 
 # ======================
-# PERBAIKI 1 KATA (DLD)
+# PERBAIKI 1 KATA
 # ======================
 def perbaiki_kata_dld(kata):
 
@@ -115,7 +115,7 @@ def perbaiki_kata_dld(kata):
     return kata
 
 # ======================
-# EMPIRIS (SPLIT)
+# EMPIRIS (SPLIT LEBIH LONGGAR)
 # ======================
 def metode_empiris(kata):
 
@@ -125,7 +125,8 @@ def metode_empiris(kata):
         kiri = kata[:i]
         kanan = kata[i:]
 
-        if kiri in kamus_txt and kanan in kamus_txt:
+        # 🔥 tidak perlu harus ada di kamus
+        if len(kiri) > 2 and len(kanan) > 2:
             hasil.append((kiri, kanan))
 
     return hasil
@@ -138,7 +139,7 @@ def prediksi_final(kata):
     kata = kata.lower()
 
     # ======================
-    # DLD
+    # 1. DLD AWAL
     # ======================
     kandidat = filtering_kamus(kata)
 
@@ -150,14 +151,14 @@ def prediksi_final(kata):
 
     ranking.sort(key=lambda x: x[1])
 
-    top3 = [x[0] for x in ranking[:3]] if ranking else []
+    top3_awal = [x[0] for x in ranking[:3]] if ranking else []
 
-    # ✅ jika DLD berhasil
+    # ✅ jika berhasil langsung
     if ranking and ranking[0][1] <= 2:
-        return ranking[0][0], "DLD", top3
+        return ranking[0][0], "DLD", top3_awal
 
     # ======================
-    # EMPIRIS
+    # 2. EMPIRIS (SPLIT)
     # ======================
     hasil_empiris = metode_empiris(kata)
 
@@ -165,18 +166,28 @@ def prediksi_final(kata):
 
         kiri, kanan = hasil_empiris[0]
 
+        # 🔥 perbaiki tiap kata pakai DLD
         kiri_fix = perbaiki_kata_dld(kiri)
         kanan_fix = perbaiki_kata_dld(kanan)
 
-        return f"{kiri_fix} {kanan_fix}", "EMPIRIS", []
+        # 🔥 ambil top3 dari kata yang salah
+        top3_split = []
+
+        if kiri_fix != kiri:
+            top3_split = prediksi_top3_dld(kiri)
+
+        elif kanan_fix != kanan:
+            top3_split = prediksi_top3_dld(kanan)
+
+        return f"{kiri_fix} {kanan_fix}", "EMPIRIS", top3_split
 
     # ======================
-    # FALLBACK
+    # 3. GAGAL TOTAL
     # ======================
-    return kata, "TIDAK DIKOREKSI", top3
+    return kata, "TIDAK DIKOREKSI", top3_awal
 
 # ======================
-# UI
+# UI STREAMLIT
 # ======================
 st.title("Spelling Correction - Skenario 2")
 st.write("Metode: DLD + Empiris")
@@ -212,6 +223,11 @@ if st.button("Koreksi"):
 
         if metode == "EMPIRIS":
             st.info(f"{kata} → {hasil} (EMPIRIS)")
+
+            if top3:
+                st.write("Top Kandidat:")
+                for i, k in enumerate(top3, 1):
+                    st.write(f"{i}. {k}")
 
         elif metode == "TIDAK DIKOREKSI":
             st.warning(f"{kata} → tidak bisa dikoreksi")
