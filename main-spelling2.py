@@ -203,7 +203,7 @@ def proses_kata(kata):
 # UI STREAMLIT
 # ======================
 st.title("Spelling Correction Teks Informal Bahasa Indonesia")
-st.write("Metode: DLD + Empiris")
+st.write("Metode: DAMERAU LEVENSTHEIN DISTANCE + EMPIRIS")
 
 teks = st.text_area("Masukkan kalimat:")
 
